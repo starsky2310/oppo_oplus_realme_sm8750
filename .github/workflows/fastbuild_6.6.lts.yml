@@ -97,34 +97,36 @@ jobs:
           mkdir kernel_workspace
           cd kernel_workspace
           
-          sudo apt-mark hold firefox &&
-          sudo apt-mark hold libc-bin &&
-          sudo apt purge man-db &&
-          sudo rm -rf /var/lib/man-db/auto-update &&
-          sudo apt update &&
-          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache &
+          # 1. 安装依赖 (在前台运行，确保安装完成)
+          sudo apt-mark hold firefox
+          sudo apt-mark hold libc-bin
+          sudo apt purge man-db
+          sudo rm -rf /var/lib/man-db/auto-update
+          sudo apt update
+          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache git
           
-          echo "正在克隆源码仓库..."
-          aria2c -s16 -x16 -k1M https://github.com/starsky2310/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.119.zip -o common.zip && 
-          unzip -q common.zip && 
-          # --- 修改开始：使用通配符匹配目录名，防止名称不匹配导致 mv 失败 ---
-          mv android_kernel_common_oneplus_sm8750* common &&
-          # --- 修改结束 ---
-          rm -rf common.zip &
+          # 2. 克隆内核源码 (在前台运行，确保源码下载成功且目录正确)
+          # 使用 git clone 直接将目录命名为 common，彻底解决目录名不对的问题
+          echo "正在克隆内核源码..."
+          git clone --depth=1 -b oneplus/sm8750_v_16.0.0_oneplus_13_6.6.119 https://github.com/starsky2310/android_kernel_common_oneplus_sm8750.git common
           
-          echo "正在克隆llvm-clang18工具链..." &&
-          mkdir -p clang18 &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
-          unzip -q clang.zip -d clang18 &&
-          rm -rf clang.zip &
+          # 检查是否成功
+          if [ ! -d "common" ]; then
+            echo "错误：内核源码目录 common 未创建，克隆可能失败！"
+            exit 1
+          fi
+
+          # 3. 下载工具链 (后台并行下载，节省时间)
+          echo "正在克隆llvm-clang18工具链..."
+          mkdir -p clang18
+          (aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip && unzip -q clang.zip -d clang18 && rm -rf clang.zip) &
           
-          echo "正在克隆构建工具..." &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
-          unzip -q build-tools.zip &&
-          rm -rf build-tools.zip &
+          echo "正在克隆构建工具..."
+          (aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip && unzip -q build-tools.zip && rm -rf build-tools.zip) &
           
           wait
           echo "所有源码及llvm-Clang18工具链初始化完成！"
+          ls -F # 列出当前目录内容，用于调试确认 common 是否存在
 
 
       - name: 配置ccache目录

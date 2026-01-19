@@ -1,4 +1,4 @@
-name: 加速版构建 6.6.119 欧加真OKI内核
+name: 加速版构建 6.6.lts 欧加真OKI内核
 
 env:
   TZ: Asia/Shanghai
@@ -97,55 +97,53 @@ jobs:
           mkdir kernel_workspace
           cd kernel_workspace
           
-          # 1. 安装依赖 (在前台运行，确保安装完成)
-          sudo apt-mark hold firefox
-          sudo apt-mark hold libc-bin
-          sudo apt purge man-db
-          sudo rm -rf /var/lib/man-db/auto-update
-          sudo apt update
-          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache git
+          sudo apt-mark hold firefox &&
+          sudo apt-mark hold libc-bin &&
+          sudo apt purge man-db &&
+          sudo rm -rf /var/lib/man-db/auto-update &&
+          sudo apt update &&
+          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache &
           
-          # 2. 克隆内核源码 (在前台运行，确保源码下载成功且目录正确)
-          # 使用 git clone 直接将目录命名为 common，彻底解决目录名不对的问题
-          echo "正在克隆内核源码..."
-          git clone --depth=1 -b oneplus/sm8750_v_16.0.0_oneplus_13_6.6.119 https://github.com/starsky2310/android_kernel_common_oneplus_sm8750.git common
+          echo "正在克隆源码仓库..."
+          aria2c -s16 -x16 -k1M https://github.com/starsky2310/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.lts.zip -o common.zip && 
+          unzip -q common.zip && 
+          # --- 修改开始：使用通配符匹配目录名，防止名称不匹配导致 mv 失败 ---
+          mv android_kernel_common_oneplus_sm8750* common &&
+          # --- 修改结束 ---
+          rm -rf common.zip &
           
-          # 检查是否成功
-          if [ ! -d "common" ]; then
-            echo "错误：内核源码目录 common 未创建，克隆可能失败！"
-            exit 1
-          fi
-
-          # 3. 下载工具链 (后台并行下载，节省时间)
-          echo "正在克隆llvm-clang18工具链..."
-          mkdir -p clang18
-          (aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip && unzip -q clang.zip -d clang18 && rm -rf clang.zip) &
+          echo "正在克隆llvm-clang18工具链..." &&
+          mkdir -p clang18 &&
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
+          unzip -q clang.zip -d clang18 &&
+          rm -rf clang.zip &
           
-          echo "正在克隆构建工具..."
-          (aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip && unzip -q build-tools.zip && rm -rf build-tools.zip) &
+          echo "正在克隆构建工具..." &&
+          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
+          unzip -q build-tools.zip &&
+          rm -rf build-tools.zip &
           
           wait
           echo "所有源码及llvm-Clang18工具链初始化完成！"
-          ls -F # 列出当前目录内容，用于调试确认 common 是否存在
 
 
       - name: 配置ccache目录
         run: |
-          echo "CCACHE_DIR=$HOME/.ccache_6.6.119" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache_6.6.lts" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=3G" >> $GITHUB_ENV
           echo "当前磁盘空间："
           df -h
-          echo "当前构建内核版本：6.6.119"
+          echo "当前构建内核版本：6.6.lts"
 
       - name: 载入当前版本内核的 ccache缓存
         uses: actions/cache@v4
         id: ccache-restore
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-neov4-6.6.119-${{ runner.os }}-main
+          key: ccache-neov4-6.6.lts-${{ runner.os }}-main
           restore-keys: |
-            ccache-neov4-6.6.119-${{ runner.os }}-
-            ccache-neov4-6.6.119-
+            ccache-neov4-6.6.lts-${{ runner.os }}-
+            ccache-neov4-6.6.lts-
       
       - name: 初始化并配置ccache
         run: |
@@ -435,7 +433,6 @@ jobs:
         run: |
           echo "正在添加lz4 1.10.0 & zstd 1.5.7补丁…"
           cd kernel_workspace
-          ls
           git clone --depth=1 https://github.com/cctv18/oppo_oplus_realme_sm8750.git
           cp ./oppo_oplus_realme_sm8750/zram_patch/001-lz4.patch ./common/
           cp ./oppo_oplus_realme_sm8750/zram_patch/lz4armv8.S ./common/lib
@@ -811,11 +808,11 @@ jobs:
       - name: 设置环境变量
         run: |
           if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            FULL_VERSION=${{ format('{0}.119-{1}', env.KERNEL_VERSION, github.event.inputs.kernel_suffix) }}
+            FULL_VERSION=${{ format('{0}.lts-{1}', env.KERNEL_VERSION, github.event.inputs.kernel_suffix) }}
             echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
             export FULL_VERSION=$FULL_VERSION
           else
-            FULL_VERSION=${{ format('{0}.119-{1}', env.KERNEL_VERSION, env.KERNEL_NAME) }}
+            FULL_VERSION=${{ format('{0}.lts-{1}', env.KERNEL_VERSION, env.KERNEL_NAME) }}
             echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
             export FULL_VERSION=$FULL_VERSION
           fi
@@ -850,7 +847,7 @@ jobs:
             ### 📱 欧加真 ${{ env.KSU_TYPENAME }} SM8750 通用内核 | 构建信息
             - 内核版本号: ${{ env.FULL_VERSION }}
             - 编译时间: ${{ env.TIME_FORM }}
-            - 机型：欧加真骁龙8Elite通用 6.6.119 内核（基于一加13国际版 6.6.89 版官方OKI源码、AOSP2026.01分支源码和高通KERNEL.PLATFORM.4.0.r1-15500-kernel.0源码）
+            - 机型：欧加真骁龙8Elite通用 6.6.lts 内核（基于一加13国际版 6.6.89 版官方OKI源码、AOSP2026.01分支源码和高通KERNEL.PLATFORM.4.0.r1-15500-kernel.0源码）
             - 特性：${{ env.KSU_TYPENAME }} + 风驰内核
             - susfs支持：${{ github.event.inputs.susfs_enable }}
             - KPM支持 ：${{ github.event.inputs.kpm_enable }}
